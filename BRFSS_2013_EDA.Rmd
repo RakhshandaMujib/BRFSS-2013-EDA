@@ -1,0 +1,674 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+### Loading packages
+
+We use two packages here for the purpose of this project- **dplyr** and **ggplot2**.
+While dplyr allows us to explore the data and perform various operations needed to wrangle and manipulate the same in the way we want to, ggplot2 is used for providing us a better grasp over the insights drawn with the help of graphical techniques like barplots, scatter diagrams, histograms etc. 
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Loading data
+
+We must first load the data we're going to work with. To do so, the **load()** function is used with **"brfss2013.RData"** as the argument.
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+As we load the data, in the Environment panel, we are already able to view the total number of observations and the total number of variables, which are equal to 491775 and 330 respectively.
+
+* * *
+
+## Part 1: The Data
+
+In this project we're going to work with the data of Behavioral Risk Factor Surveillance System (BRFSS)--a cross-sectional, state-base telephone survey that the state health departments conduct monthly over telephonic conversations with the respondents. BRFSS is used to collect prevalence data among adult U.S. residents regarding their risk behaviors and preventive health practices that can affect their health status. 
+
+The method of sampling used is clearly **stratified**, where each stratum represents a state. Since, respondents are randomly selected within a state (stratum), the results obtained can be *generalized* to the corresponding state. 
+
+The study is *not* an experimental study but an **observation** study, so any association between any two (or more) variables does *not necessarily imply a causal relationship* between the same.
+
+It is a good idea to once view the dataframe and understand what information each variable gives us. We are going to use the names() function to just view the variables' name.
+```{r names_brfs2013}
+names(brfss2013)
+```
+
+In case of any confusion regarding what values the variable stores- categorical or numberical- we can choose to view only that variable from the dataset using the data frame name followed by a **$** symbol followed by the variable name. For instance, if we want to know what the variable *dispcode* means we can do the following:
+
+```{r dispcode_is}
+str(brfss2013$dispcode)
+```
+
+We find that it stores the *codes* "Completed interview" and "Partially completed interview" which clearly describes the status of the completion of interview. dispcode thus is a *categorical* variable.
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+
+*What is the probability that a randomly selected individual from a given state, between the age of 18-39 is a smoker despite suffering from asthma at least once in his life time?*
+
+
+Instead of working with the entire data frame, we create a new data frame using the variables that interests us: X_state, X_ageg5yr, X_smoker3 and asthma3.
+Here, all the variables are categorical in nature and they give us the following information:
+**X_state** - Takes in the strata's or the state's name.
+**X_ageg5yr** - Gives us the age group an individual falls in. We're are not going to have this as a variable in the new data frame. However, we're going to use this to filter our data from *brfss2013*. 
+**X_smoker3** - Gives us the state of an individual- whether he/she is a current smoker, former smoker or not a smoker.
+**asthma3** - Tells us if the individual ever had asthma or not. 
+
+We name our new table as tab1.
+
+```{r choosing colums from brfss2013}
+ tab1 <- brfss2013 %>%
+  filter(X_ageg5yr %in% c("Age 18 to 24", "Age 25 to 29", "Age 30 to 34", "Age 35 to 39"), !is.na(X_smoker3), !is.na(asthma3)) %>%
+  select(X_state, X_smoker3, asthma3)
+```
+
+Now, in order to get the total count of observations in tab1, we use structure function, str():
+
+```{r}
+ str(tab1)
+```
+
+There are 101451 observations. This implies that out of 491775 total observations, there are only 101451 individuals in the age group of 18-39 whose information on smoking habit and asthma condition is available to us from the given states.
+
+To recall our aim, we need to find out the probability of a random person *in a given state* who has suffered from asthma at least once and is still a smoker. In essence, 
+        P(observation= Current smoker | asthma= Yes)
+        
+The above can be found out using Baye's theorem as:
+
+        P(observation= Current smoker *and* asthma= Yes)
+        ________________________________________________
+                       P(asthma= Yes)
+
+To do that, we arrange our data in such a way that all our information is grouped according to the state and the variables are transformed to numerical from categorical. 
+
+However, before creating a new data frame, let us try to find out the observations or individuals who smoke and have suffered (or is still suffering) from asthma. 
+
+```{r}
+tab1 <- tab1 %>%
+  mutate(asth_smoker= ifelse(asthma3== "Yes" & X_smoker3 %in% c("Current smoker - now smokes some days", "Current smoker - now smokes every day"), "Yes", "No"))
+```
+
+tab1 now has a new variable **asth_smoker** which takes in values "Yes" for observations showing positive results for smoking habit and being asthma patients, and "No" otherwise.
+
+Finally we create a new data frame that is going to be grouped by *X_state* and will store the counts for *total* number of observations, people having asthma (*asth_yes*), people being current smokers (*smoker*) and people showing both traits (*asth_smok_cnt*). 
+We name this new data frame *tab1_grouped*.
+
+```{r}
+tab1_grouped <- tab1 %>%
+  group_by(X_state) %>%
+  summarise(total= n(), asth_yes= sum(asthma3== "Yes"), smoker= sum(X_smoker3 %in% c("Current smoker - now smokes some days", "Current smoker - now smokes every day")), asth_smok_cnt= sum(asth_smoker== "Yes"))
+```
+
+Now, it's time to answer our question. 
+
+If we take the first row, that is, for Alabama we get the following data:
+X_state=        Alabama
+total=          253
+asth_yes=       31
+smoker=         67
+asth_smok_cnt=  11
+
+Notice, asth_smok_cnt is actually giving us the intersetion of of people having asthma and being a smoker. Thus:
+
+P(observation= Current smoker *and* asthma= Yes)= 11/253 for the sample of Alabama. 
+
+Also, probability of finding an asthma patient (or someone who was an asthma patient):
+
+P(asthma= Yes)= 31/253 in Alabama.
+
+Hence, 
+        
+    P(observation= Current smoker *and* asthma= Yes)     11/253
+    ________________________________________________ =  ________  = 11/31
+                   P(asthma= Yes)                        31/253
+
+and that is our answer for Alabama. 
+
+Let us calculate the same for all the other states: 
+
+```{r}
+tab1_grouped <- tab1_grouped %>%
+  mutate(smoker_given_asth= asth_smok_cnt/asth_yes)
+```
+
+The variable *smoker_given_asth* gives us the probability of finding a *smoker* from a given state who has at least suffered from asthma once in his/her life. 
+
+**Research quesion 2:**
+
+*Of diabetes, high blood pressure, stroke, heart attack and high blood cholestrol, which disease (or condition) is an overweight or an obese person most prone to? What is the age group that has the maximum percentage of overweight or obese people suffering from each of the diseases?*
+
+Let us first try to figure out the variables that we are interested in. Since our findings are centered around the condition of being overweight and obese only, we need use the variable that stores the responses for the same. *X_bmi5cat* is a 4-level variable with 2 of its responses as 'Overweight' and 'Obese'. Thus, we can filter our data for these two respons for our new dataframe.
+
+Talking about the diseases we are going to study about, we use the following variables: 
+**diabete3**: Tells us if an individual ever had diabetes. 
+**bphigh4**: Tells us if an individual ever had high blood pressure. 
+**cvdstrk3**: Tells us if an individual has ever been diagnosed with a stroke. **cvdinfr4**: Tells us if an individual has ever been diagnosed with a heart httack. 
+**toldhi2**: Tells us if an individual has ever been diagnosed with high blood cholesterol
+
+Finally, to answer our last question about age group, we will again use the variable X_ageg5yr that groups the age of an individual in 5 years.
+
+```{r}
+tab2 <- brfss2013 %>%
+  filter(!is.na(X_bmi5cat), !is.na(toldhi2), !is.na(diabete3), !is.na(bphigh4), !is.na(cvdinfr4), !is.na(cvdstrk3), !is.na(X_ageg5yr), X_bmi5cat %in% c("Obese", "Overweight")) %>%
+  select(X_ageg5yr, X_bmi5cat, diabete3, bphigh4, cvdstrk3, cvdinfr4, toldhi2)
+```
+
+Let us find out the total number of obese and overweight people we filtered out from the brfss2013 dataframe:
+
+```{r}
+str(tab2)
+```
+
+There are 261941 obese and overweight poeple whose information about the above mentioned diseases is available to us.
+
+Now, the variable *diabete3* takes up 4 responses: 
+1) Yes, 
+2) No, 
+3) Yes, but female told only during pregnancy and
+4) No, pre-diabetes or borderline diabetes.
+
+We are only interested in the first response. The second response is of no use, for obvious reasons. The third response is biased in the sense, pregnancy can be considered as a confounder for being diabetic females. The fourth response is useful to answer other questions but not the one that concerns us. We'll therefore only use the first reponse for our calculations.
+
+Let us first grab the counts for each of the varibles:
+
+```{r}
+tab2 %>%
+  summarise(diab_yes= sum(diabete3 == "Yes"), bphigh_yes= sum(bphigh4 == "Yes"), stroke_yes= sum(cvdstrk3 == "Yes"), hrtatk_yes= sum(cvdinfr4 == "Yes"), highchol_yes= sum(toldhi2== "Yes"))
+```
+
+From the above result it is evident that most of the obese and overweight people suffer from high blood pressure.
+
+It will be a good idea to calculate the percentage of patients suffering from each of the diseases.
+
+```{r}
+tab2 %>%
+  summarise(diab_yes= (sum(diabete3 == "Yes")/ n())*100, bphigh_yes= (sum(bphigh4 == "Yes")/ n())*100, stroke_yes= (sum(cvdstrk3 == "Yes")/ n())*100, hrtatk_yes= (sum(cvdinfr4 == "Yes")/ n())*100, highchol_yes= (sum(toldhi2== "Yes")/ n())*100)
+```
+
+Hence, we can conclude that the disease which an obese or an overweight person is most prone to is high blood pressure (roughly, 51%) followed by high choleterol (roughly, 48%).
+
+Next, let us try to find out the age group that has the maximum percentage of complaints for the above diseases:
+
+First, let us create a new dataframe- tab2_grouped- where we store the count of individuals suffering from each of the diseases in groups of the respective age groups they belong to.
+
+```{r}
+tab2_grouped <- tab2 %>%
+group_by(X_ageg5yr) %>%
+summarise(diab_yes= sum(diabete3 == "Yes"), bphigh_yes= sum(bphigh4 == "Yes"), stroke_yes= sum(cvdstrk3 == "Yes"), hrtatk_yes= sum(cvdinfr4 == "Yes"), highchol_yes= sum(toldhi2== "Yes"))
+```
+
+Now, that we have our data arranged as per age groups, let us convert our data to percentages:
+
+```{r}
+tab2_grouped$diab_yes <- (tab2_grouped$diab_yes * 100)/ sum(tab2_grouped$diab_yes) 
+tab2_grouped$bphigh_yes <- (tab2_grouped$bphigh_yes * 100)/ sum(tab2_grouped$bphigh_yes) 
+tab2_grouped$stroke_yes <- (tab2_grouped$stroke_yes * 100)/ sum(tab2_grouped$stroke_yes) 
+tab2_grouped$hrtatk_yes <- (tab2_grouped$hrtatk_yes * 100)/ sum(tab2_grouped$hrtatk_yes) 
+tab2_grouped$highchol_yes <- (tab2_grouped$highchol_yes * 100)/ sum(tab2_grouped$highchol_yes)
+```
+
+To check the correctness of the operations we performed, we can find the sum of each column representing each of the diseases. They should total up to a 100.
+
+```{r}
+tab2_grouped %>%
+  summarise(sum(diab_yes), sum(bphigh_yes), sum(stroke_yes), sum(hrtatk_yes), sum(highchol_yes))
+```
+
+Now, it's time to find out the age group having maximum percentage of obese and overweight people for each disease:
+
+```{r}
+tab2_grouped %>%
+filter(diab_yes== max(diab_yes)) %>%
+select(X_ageg5yr, diab_yes)
+
+tab2_grouped %>%
+filter(bphigh_yes== max(bphigh_yes)) %>%
+select(X_ageg5yr, bphigh_yes)
+
+tab2_grouped %>%
+filter(stroke_yes== max(stroke_yes)) %>%
+select(X_ageg5yr, stroke_yes)
+
+tab2_grouped %>%
+filter(hrtatk_yes== max(hrtatk_yes)) %>%
+select(X_ageg5yr, hrtatk_yes)
+
+tab2_grouped %>%
+filter(highchol_yes== max(highchol_yes)) %>%
+select(X_ageg5yr, highchol_yes)
+
+```
+
+Thus we know that the age group 65-69 is the age group that is most susceptible to diseases related to being overweight and obese.
+
+**Research quesion 3:**
+
+*What is the probability that a randomly selected woman is more strssed given that she is a mother? What affects a mother's mental health more- having a career or not having the same?*
+
+To answer the above questions, let us first figure out the data that may be of use to us. Since we do not have any categorical variable that will take up the status of being a mother, we'll have to filter our data accordingly. We can use the variable rcsrltn2 to filter our data for "Parent" and "Foster parent or guardian" only, and sex as "Female" for female parent or mother. Next, scince we are interested in a woman's mental health we're going to use the variable menthlth which gives us the number of days an individual has faced poor mental health in the month before the survey was conducted. We are also not interested mothers who are old or are above 50 years of age. For that we are going use X_ageg5yr and filter it accordingly. For finding out if a woman is not a mother we will need the children variable that returns us the count of children found in the household. In addition we will use the following variables to give us important information later as we analyse our data: marital- Gives the marital status of the individual. income2- Income range of the individual. employ1- Gives the employment status of the individual. X_educag- Gives the individual's level of highest education.
+
+Let us create a dataframe with the above variables:
+
+```{r}
+tab3 <- brfss2013 %>%
+   filter(!is.na(sex), sex== "Female", !is.na(menthlth), !is.na(X_ageg5yr), as.numeric(X_ageg5yr) <= 6, !is.na(marital), !is.na(income2), !is.na(employ1), !is.na(children), !is.na(X_educag)) %>%
+   select(marital, rcsrltn2, menthlth, X_educag, employ1, income2)
+```
+
+Now, that our dataframe is ready, we are going to work towards answering our first question.
+
+Statistically speaking, what we are trying to do is a comaparitive study on the probability of a woman being strssed given that she is a mother and the probability of a woman being strssed given that she is not *a mother*. That is:
+
+                                      P(Stressed= Yes , Is_mother= Yes)   P(Stressed= Yes | Is_mother= Yes) =  ___________________________________
+                                              P(Is_mother= Yes)
+                      
+                                 and
+ 
+                                      P(Stressed= Yes , Is_mother= No) P(Stressed= Yes | Is_mother= No)  =  __________________________________
+                                               P(Is_mother= No)
+                                               
+                                               
+First, let us start with classifying women on the basis of the two categories, that is, being a mother and not being mother. We create a categorical variable named mother for the same.
+
+```{r}
+tab3 <- tab3 %>%
+  mutate(mother= ifelse(rcsrltn2 %in% c("Parent", "Foster parent or guardian"), "Yes", "No"))
+```
+
+Now, let us find out the probability of being a mother.
+
+```{r}
+tab3 %>%
+  summarise(prob_mom= sum(mother== "Yes")/ n())
+```
+
+For finding out the probability of a woman being stressed given the condition she is a mother, we'll have to figure out a way to classify the state of being stressed in the first place. Let us suppose, a person who has suffered from poor mental health for more than equal to 1 week in the given month was stressed.
+
+```{r}
+tab3 <- tab3 %>%
+  mutate(stressed= ifelse(menthlth>=7, "Yes", "No"))
+```
+
+Thus, the probabilty a woman being a mother and being stressed is equal to:
+
+```{r}
+tab3 %>%
+  summarise(p_mom_stressed= sum(stressed== "Yes" & mother== "Yes")/n())
+```
+
+Therefore,
+
+                P(Stressed= Yes | Is_mother= Yes)
+                = 0.06291256/ 0.3386109 
+                = 0.185796
+Similarly, we calculate the second probability for making our desired comparison.
+
+P(Is_mother= No) is equal to:
+
+```{r}
+tab3 %>%
+  summarise(prob_not_mom= sum(mother== "No")/ n())
+```
+
+P(Stressed= Yes , Is_mother= No) is equal to:
+
+```{r}
+tab3 %>%
+  summarise(p_not_mom_stressed= sum(stressed== "Yes" & mother== "No")/n())
+```
+
+Hence,
+
+                P(Stressed= Yes | Is_mother= No)
+                = 0.1431646/ 0.6613891
+                = 0.2164605
+
+From the observations and the calculations we made, it is pretty clear that being a mother does not exactly imply a more strenous life. There are many compounders that are responsible for a woman being stressed rather than just the fact of being a mother. There's also a greater chance of finding women who are not stressed given that they are mothers than finding a woman who is stressed and is not a mother. Approximately, a 4% more chance.
+
+Now, let us move ahead to answering the second question.
+
+*What affects a mother's mental health more- having a career or not having the same?*
+
+For that, let us find the percentage of mothers who are not working and are stressed. In order to do that let us first check the what are the levels that the variable employ1 takes up for tab3.
+
+```{r}
+tab3 %>%
+  group_by(employ1) %>%
+  select(employ1) %>%
+  summarise(count = n())
+```
+
+Before we proceed further, it will be good idea to have a categorical variable carori with two levels- "Yes" and "No"- that will divide women on the basis of whether they're working towards building their carrers or have given up on the same. That is, are they still career oriented or not. If a woman is a student we'll consider her to be working on her career. Hence:
+
+```{r}
+tab3 <- tab3 %>%
+  mutate(careerori= ifelse(employ1 %in% c("Employed for wages", "Self-employed", "A student"), "Yes", "No"))
+```
+
+Now, let us find the percentage of mothers not doing well enough mentally and who are no longer career oriented:
+
+```{r}
+tab3 %>%
+  summarise(nocarmom= (sum(careerori== "No" & stressed== "Yes" & mother== "Yes")*100)/ sum(stressed== "Yes" & mother== "Yes"))
+```
+
+Thus, the percentage of mothers who get more affected under work pressure is:
+
+                         100- 40.4866%
+                       = 59.5134% 
+
+Using this information we can say that professional work pressure is more harmful for a mother's mental health than the pressure to take care of a household.
+
+##Part 3: Exploratory data analysis
+
+**Research quesion 1:**
+
+*What is the probability that a randomly selected individual from a given state, between the age of 18-39 is a smoker despite suffering from asthma at least once in his life time?*
+
+Once we have answered the above question, it is time for us to make some inferences.
+
+Let us first view what are the number of states having a particular probability of an asthma-sufferer being a smoker with the help of a histogram.
+
+```{r}
+ggplot(data= tab1_grouped, aes(x= smoker_given_asth))+
+geom_histogram(binwidth = 0.01)
+```
+
+As we can see, the plot is almost unimodal with some outliers. There seem to be no state having probabilities lying in the range of somewhere around 0.14-0.17, 0.355-0.38 etc.
+
+We can try to find out the central tendencies like the mean and the median of these probability to have an idea about the estimate of finding smokers given they are/were asthma patients. Calculating the standard deviation will also be useful to find out how much the conditions differ from state to state.
+
+```{r}
+tab1_grouped %>%
+summarise(med_prob= median(smoker_given_asth), mean_prob= mean(smoker_given_asth), sd_prob= sd(smoker_given_asth))
+```
+
+However, this idea of generalizing is the probabilities is not good since each state differs from the other in a lot of other respects.
+
+Another important idea will be to find out the states which need more attention as far as taking up risky habits like smoking despite being an asthma patient is concerned. We can do so by sorting our data in descending order, as greater the probability, greater is the need for attention.
+
+```{r}
+arrange(tab1_grouped, desc(smoker_given_asth)) %>%
+select(X_state, smoker_given_asth)
+```
+
+From the above results, we can conclude that states of Tennessee, Kentucky, West Virginia, Arkansas and Mississippi need the maximum attention for asthma patients in the age group of 18-39. The government can take actions on smoking prohibitions and asthma paitients, during their treatment can be given proper counselling sessions.
+
+Finally, we may want to find out if the two attributes of smoking and being an asthma patient independent in nature or not. The test of two events A and B being independent can be done by taking the help of multiplication rule for independent events which says:
+
+                    P(A and B)= P(A) * P(B)
+                    
+given that A and B are independent events.
+
+Let us find out the probability of finding a smoker in each state, first:
+
+```{r}
+tab1_grouped <- tab1_grouped %>%
+mutate(prob_smoker= smoker/total)
+```
+
+Now, we know A and B will independent if:
+
+                      P(A|B)= P(A) 
+Since,
+
+                      P(A|B)= P(A) * P(B)
+                              ___________
+                                 P(B)
+For independent events.
+
+As we've seen in the dataframe, for almost all the cases smoker_given_asth is not equal to prob_smoker. Hence, we infer that there is definitely an association btween being an asthma patient and being a smoker. Lastly, we must keep in mind, the study is observational and therefore no causal relationship can be concluded between the two events.
+
+**Research quesion 2:**
+
+*Of diabetes, high blood pressure, stroke, heart attack and high blood cholestrol, which disease (or condition) is an overweight or an obese person most prone to? What is the age group that has the maximum percentage of overweight or obese people suffering from each of the diseases?*
+
+So far we have seen that high blood pressure is the most common diseases that comes along with not maintaining a healthy weight. We have also statistically proven that the age group which is most susceptible to cardiovascular diseases is 65-69.
+
+But, can we say which of the two factors out of being overweight (or obese) and being old (falling in the age range of 65-69), is more strongly associated with suffering from high blood pressure? The reason why answering this question is interesting is because, when we're filtering out only overweight people (about 0.26M), we are atually excluding almost 50% of the total data that is available to us (we know the total observations we have is around 0.49M). Of this 50% data that we have at hand, 50% of observations suffer from high blood pressure and 75% of the diseases (diabetes, high blood pressure, stroke, heart attack and high blood cholesterol) have the maximum occurances in the age group of 65-69.
+
+In essense, we're trying to figure out which of the following probabilities is greater:
+
+    P(High blood pressure= Yes | Overweight or obese= Yes) or
+      P(High blood pressure= Yes | Age= Between 65 to 69)
+      
+Although, we know that with greater age comes more health related issues, we are not going to consider any age below 65 years and above 69 years for consistency purpose.
+
+Let us move ahead and find out our first probability. We know:
+
+     P(High blood pressure= Yes | Overweight or obese= Yes) =
+          P(High blood pressure, Overweight or obese) 
+         _____________________________________________
+                    P(Overweight or obese)
+
+For the numerator, we need to calculate the probability of overweight (or obese) individuals who also suffer from high blood pressure:
+
+```{r}
+brfss2013 %>%
+  filter(!is.na(X_bmi5cat), !is.na(bphigh4)) %>%
+  summarise(prob_highbmi_highbp= sum(X_bmi5cat %in% c("Overweight", "Obese") &  bphigh4== "Yes")/ n())
+```
+
+Let us now calculate the denominator, in essence, probability of an individual being overweight or obese:
+
+```{r}
+brfss2013 %>%
+  filter(!is.na(X_bmi5cat), !is.na(bphigh4)) %>%
+  summarise(prob_highbmi= sum(X_bmi5cat %in% c("Overweight", "Obese"))/n())
+```
+
+Hence,
+
+        P(High blood pressure= Yes | Overweight or obese= Yes) 
+        = 0.3105983/0.6492425
+        = 0.48347792
+
+That means, roughly 48% people who have BMI outside the normal range, suffer from hight blood pressure. It is no doubt that is a high percentage. However, let us find out the result for our second case, that is- probability of person suffering from high blood pressure, given that he/she belongs to the age group of 65-69 years. Again, we know:
+
+        P(High blood pressure= Yes | Age= Between 65 to 69)
+            P(High blood pressure, age in range 65 to 69) 
+        = _________________________________________________
+                    P(age in range 65 to 69)
+
+Calculating the probability of a person who is both old and is a patient of high blood pressure (numerator):
+
+```{r}
+brfss2013 %>%
+  filter(!is.na(X_ageg5yr), !is.na(bphigh4)) %>%
+  summarise(prob_highbp_old= sum(X_ageg5yr== "Age 65 to 69" & bphigh4== "Yes")/ n())
+```
+
+Now, calculating the denominator- probability of people belonging to the age group of 65-69 years:
+
+```{r}
+brfss2013 %>%
+  filter(!is.na(X_ageg5yr), !is.na(bphigh4)) %>%
+  summarise(prob_old= sum(X_ageg5yr== "Age 65 to 69")/ n())
+```
+
+Therefore,
+
+        P(High blood pressure= Yes | Age= Between 65 to 69)
+        = 0.05930363/ 0.1026976
+        = 0.5774588
+
+Now, it is pretty evident that a person who suffers from high blood pressure has a higher chance of being old (65-69 years old) rather than being obese or overweight. This percentage would go even higher (goes up to 62.27%) if we considered people above the age of 69 years. However, we would rather restrict our focus to the age range of 65-69 years only.
+
+Hence, the probability that an individual is a patient of high blood pressure given that he is old (65-69 years old) is about 58% and given that he/she has a higher BMI is 48%.
+
+Let us try to look at the numbers graphically. For this we are going to create a new dataframe that is going to store all our data required for plotting on graph. parameter is going to be the only categorical variable which takes up 3 levels for the three conditions of being old- lying in the age group 65-69 and 65 or above, and having a BMI beyond the normal range.
+
+```{r}
+parameter <- c("Age 65 to 69", "Age 65 or older", "High BMI")
+```
+
+The next variable is going to be a numerical one and is going to store the probability of a person having high blood pressure and he/she belongs to either of the categories.
+
+```{r}
+brfss2013 %>%
+  filter(!is.na(X_ageg5yr), !is.na(X_age65yr), !is.na(X_bmi5cat), !is.na(bphigh4)) %>%
+  summarise(a= sum(bphigh4== "Yes" & X_ageg5yr== "Age 65 to 69")/n(), b= sum(bphigh4== "Yes" & X_age65yr== "Age 65 or older")/n(), c= sum(bphigh4== "Yes" & X_bmi5cat %in% c("Obese", "Overweight"))/n())
+```
+
+```{r}
+prob_bphigh_and_para <- c(0.05943847,   0.2069363,  0.3110051)
+```
+
+We name the dataframe tab2_graph_data.
+
+```{r}
+tab2_graph_data= data.frame(parameter, prob_bphigh_and_para)
+```
+
+Next, we'll create another variable that is going to store the probability of a person having high blood pressure given he/she belongs to either of the categories.
+
+```{r}
+tab2_graph_data <- tab2_graph_data %>%
+  mutate(prob_given_para= c(0.5774, 0.6227, 0.4835))
+```
+
+Let us now construct clustered bar plots for the above observations:
+
+```{r}
+barplot(as.matrix(tab2_graph_data[,2:3]), beside = T, col = c("orange", "blue", "green"), main = "High blood pressure and v/s given parameter", ylab = "Probability", legend.text = tab2_graph_data$parameter, args.legend = list(x = "topleft", bty = "n"))
+```
+
+The graph indeed does give us an idea about how drastically the probabilities change when we're finding an intersection with the parameters versus when we are conditioning with the parameters. However, we must not forget the dataset is sampled based on the stratified technique of samling and the results should be generalized to all the strata. Lastly, when we tried to find the probability of a particular condition being true, (say, of falling in the age group of 65-69 years) fo an individual, we've actually not taken count of the people who may also fall in the other categories. For instance, a person who is 67 years old and is obese will fall in all three categories (Age 65 to 69, Age 65 or older and High BMI). We did so because we wanted give the maximum weightage to a single condtion while finding its probability. If we did filter out people belonging to the other categories we would actually be missing on a lot of individuals who did fall in the category of our concern.
+
+**Research quesion 3:**
+
+*Does being a mother accounts for being more stressed? What affects a mother's mental health more- having a career or not having the same?*
+
+Till now we have found out the answers to the above questions. We observed that a mother is less stressed than a woman who is not a mother and that the idea of progressing with one's career is more stressful for them than taking care of the households. But, can we say that the frequency or the intensity of being stressed is lesser for mothers? To recall, when we were finding out the probability of a woman being stressed mentally, and that she was mother, we classified the state of being stressed as the condition of having more than or equal to 7 days, of poor mental health. But, is that classification enough? For instance, if if we had picked up 4 women from each of the groups of mothers and not-mothers and 4- 2 from each groups- out of the 8 women were labelled as "stressed", the probability of finding a stressed woman in either of the groups would be 2/4 or 50%. Let us now say the 2 women from the mothers' group suffered from poor mental health for 20 days out of 30 while the 2 women from the not-mothers' group suffered from the same for 7 days out of 30. In such a situation even though the mothers were clearly more stressed there would be no increase in the probability of finding a woman who is more stressed and is a mother. It will remain same at 50%. For this reason we may wish to alter the understanding of our question and percieve the idea of being more stressed a little differently.
+
+Let us find out the mean and median for the number of days a woman was stressed depending on whether or not she was a mother.
+
+For the mothers' group we have the following results:
+
+```{r}
+tab3 %>%
+  filter(mother== "Yes") %>%
+  summarise(mean= mean(menthlth), median= median(menthlth))
+```
+
+
+And for the not-mothers' group we have the following results:
+
+```{r}
+tab3 %>%
+  filter(mother== "No") %>%
+  summarise(mean= mean(menthlth), median= median(menthlth))
+```
+
+Now, again the not-mothers' group have exceeded the degree of being more stressed as compared to the mothers' group. Although, 0.622905 (4.775186-4.152281) days may seem like an insignificant difference, we can still try to understand it is not if we get the result in hours:
+
+```{r}
+library(measurements)
+conv_unit(0.622905, "day", "hr")
+```
+
+Thus, on an average a woman who is not a mother feels stressed for 14 more hours in a month than a mother. That seems like a lot of stressful moments for an individual!
+
+We can have a better visualization of our data with the help of boxplots.
+
+```{r}
+ggplot(data= tab3, aes(x= mother, y= menthlth))+
+ geom_boxplot()
+```
+
+The median and the 1st quartile for both the groups are at 0 days. However, we see a difference in the 3rd quartiles with the not-mothers' group going up till 5 days and the mothers' reaching the mark of 4 days. The data is obviously right skewed for both the groups with the possible ranges of upper whiskers at 12.5 and 10 days for the not-mothers' and mothers' group respectively. An interesting thing to note here is the bunch outliers. Although, both the groups seem to have outliers at same positions, we do not know which group has more outliers in number.
+
+To check that out we may try to find the percentage of women from each group having more than 13 days of bad mental health days:
+
+Mothers' group:
+
+```{r}
+tab3 %>%
+  filter(mother== "Yes") %>%
+  summarise(count= n(), more_bad_days= sum(menthlth >= 13)*100/count)
+```
+
+Not-mothers' group:
+
+```{r}
+tab3 %>%
+  filter(mother== "No") %>%
+  summarise(count= n(), more_bad_days= sum(menthlth >= 13)*100/count)
+```
+
+This proves that the not-mothers' group has more outliers than the mother's group.
+
+Finally, let us try to relate personal factors such as marital status and factors corresponding to a woman's professional world like her annual income and her level of education to her mental health. We are again, going to do a comparative study of the mothers' group and the not-mothers' group- for this we are going plot are graphs together in a grid-like fashion. To do so we must load the required package and create our grid:
+
+```{r}
+library(gridExtra)
+grid <- matrix(c(1,2), nrow = 2, ncol = 1, byrow = T)
+```
+
+Now that our grid is ready, let's plot our data.
+
+First, let us try to find out the association between a woman's marital status and her mental health using boxplots again:
+
+```{r}
+mar_mom <- tab3%>%
+filter(mother== "Yes") %>%
+ggplot(aes(x= marital, y= menthlth)) +
+geom_boxplot()
+
+mar_ntmom <- tab3%>%
+filter(mother== "No") %>%
+ggplot(aes(x= marital, y= menthlth)) +
+geom_boxplot()
+
+grid.arrange(mar_mom+ labs(x= "Marital status- mothers'"), mar_ntmom+ labs(x= "Marital status- not-mothers'"))
+```
+
+We can definitely see some significant variations between the two plots. Except for Married and Never married women all the women without kids seem to have a harder time than those with kids. Most significantly Divorced and women who have recently Seperated show a variation.
+
+Now, let us relate the education level of a woman with her stress health:
+
+```{r}
+edu_mom <- tab3%>%
+filter(mother== "Yes") %>%
+ggplot(aes(x= X_educag, y= menthlth)) +
+geom_boxplot()
+
+edu_ntmom <- tab3%>%
+filter(mother== "No") %>%
+ggplot(aes(x= X_educag, y= menthlth)) +
+geom_boxplot()
+
+grid.arrange(edu_mom+ labs(x= "Education level- mothers'"), edu_ntmom+ labs(x= "Education level- not-mothers'"))
+```
+
+In general, we have already seen the mental health for women who are not mothers' is much worse than those who are. The most evident change is observed in case of the women who haven't graduated from highschool. The 3rd quartile has shifted to 15 days for not-mothers' group from roughly 7 days for mothers' group. It is also worth noting that women who have completed their college or technical school graduation turn out to be least stressed.
+
+Finally, let us talk about the association between annual income the mental health of women:
+
+```{r}
+inc_mom <- tab3%>%
+filter(mother== "Yes") %>%
+ggplot(aes(x= income2, y= menthlth)) +
+geom_boxplot()
+
+inc_ntmom <- tab3%>%
+filter(mother== "No") %>%
+ggplot(aes(x= income2, y= menthlth)) +
+geom_boxplot()
+
+grid.arrange(inc_mom+ labs(x= "Income level- mothers'"), inc_ntmom+ labs(x= "Income level- not-mothers'"))
+```
+
+The IQR of mental health for 4 levels- less than 15000 USD, less than 35000 USD, less than 75000 USD, more than 75000 USD are same. However, the median for 35000 USD is greater in case of not-mothers' group. There is about a 6 days differnce between the IQR of mental health for mothers' and not-mothers' groups respectively, for the income level of less than 15000 USD. This is also the most significant difference observed.
